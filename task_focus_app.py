@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.express as px
 
 # 페이지 기본 설정
-st.set_page_config(page_title="우선순위 관리기 v46", layout="wide")
+st.set_page_config(page_title="우선순위 관리기 v47", layout="wide")
 
 # [보안] Secrets 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -33,7 +33,6 @@ with st.sidebar:
     st.divider()
     mode = st.radio("모드 설정", ["새 항목 추가", "기존 항목 수정"])
     
-    # (항목 추가/수정 로직은 V45와 동일하므로 생략 - 실제 코드에는 포함됩니다)
     if mode == "새 항목 추가":
         st.header("➕ 추가")
         t_name = st.text_input("명칭")
@@ -57,6 +56,7 @@ with st.sidebar:
                     new_row = pd.DataFrame([new_data])
                     updated_df = pd.concat([df, new_row], ignore_index=True)
                     conn.update(worksheet=ws_name, data=updated_df)
+                    st.balloons() # 풍선 그래픽 추가
                     st.success("✅ 저장 성공!")
                     st.rerun()
                 except Exception as err:
@@ -76,12 +76,14 @@ with st.sidebar:
             else:
                 u = st.slider("긴급도", 0, 10, int(row.get("긴급도", 5)))
                 d = st.slider("의존성", 0, 10, int(row.get("의존성", 5)))
-                p_score = (u*3.5) + (i*3.5) + (p*1.5) + (d*0.1) + (e*1.4)
+                p_score = (u*3.5) + (i*3.5) + (p*0.1) + (d*1.5) + (e*1.4)
                 up_cols, up_vals = ["우선순위", "진행률", "긴급도", "중요도", "의존성", "효율성"], [p_score, p, u, i, d, e]
+            
             if st.button("💾 변경사항 반영"):
                 try:
                     df.loc[df["작업명"] == target, up_cols] = up_vals
                     conn.update(worksheet=ws_name, data=df)
+                    st.balloons() # 풍선 그래픽 추가
                     st.success("✅ 동기화 완료!")
                     st.rerun()
                 except Exception as err: st.error(f"수정 실패: {err}")
@@ -108,7 +110,7 @@ with col_focus:
             st.balloons()
             st.rerun()
 
-# --- V46 핵심 추가: 체크박스 제어 ---
+# --- 하단 체크박스 ---
 st.divider()
 show_history = st.checkbox("📋 지난 이력 리스트 보기")
 
@@ -117,5 +119,3 @@ if show_history:
     if not df.empty:
         history_df = df.sort_values(by="우선순위", ascending=False)
         st.dataframe(history_df, use_container_width=True)
-    else:
-        st.info("데이터가 비어 있습니다.")
