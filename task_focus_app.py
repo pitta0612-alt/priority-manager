@@ -5,7 +5,7 @@ import plotly.express as px
 from datetime import datetime
 
 # 페이지 기본 설정
-st.set_page_config(page_title="우선순위 관리기 v50", layout="wide")
+st.set_page_config(page_title="우선순위 관리기 v51", layout="wide")
 
 # [보안] Secrets 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -89,13 +89,9 @@ col_chart, col_focus = st.columns([2, 1])
 with col_chart:
     st.subheader("📊 현재 진행 중인 우선순위")
     if not active_df.empty:
-        # 글자 크기 조절 로직 추가 (5글자 이상이면 작게)
         active_df['font_size'] = active_df['작업명'].apply(lambda x: 10 if len(str(x)) >= 5 else 14)
-        
         fig = px.scatter(active_df, x="진행률", y="우선순위", size="우선순위", color="작업명", 
                          hover_data=active_df.columns, text="작업명", range_x=[-5, 105], range_y=[0, 120])
-        
-        # 텍스트 크기 개별 설정 적용
         fig.update_traces(textposition='top center', textfont_size=active_df['font_size'])
         st.plotly_chart(fig, use_container_width=True)
     else:
@@ -118,20 +114,16 @@ with col_focus:
             st.balloons()
             st.rerun()
 
-# --- 하단 이력 관리 ---
+# --- 하단 이력 관리 (수정된 부분) ---
 st.divider()
-col_hist1, col_hist2 = st.columns(2)
+show_task_history = st.checkbox("🔍 항목별 변화 이력 보기")
 
-with col_hist1:
-    st.subheader("🔍 항목별 변화 이력")
+if show_task_history:
+    st.subheader("📋 선택 항목 타임라인")
     all_task_names = sorted(df["작업명"].unique())
     if all_task_names:
-        selected_task = st.selectbox("이력을 확인할 항목 선택", all_task_names)
+        selected_task = st.selectbox("이력을 확인할 항목을 선택하세요", all_task_names)
         task_history = df[df["작업명"] == selected_task].sort_values("저장시간", ascending=False)
         st.dataframe(task_history, use_container_width=True)
-
-with col_hist2:
-    st.subheader("📁 전체 데이터 관리")
-    show_full = st.checkbox("전체 누적 로그 보기")
-    if show_full:
-        st.dataframe(df.sort_values("저장시간", ascending=False), use_container_width=True)
+    else:
+        st.info("기록된 항목이 없습니다.")
