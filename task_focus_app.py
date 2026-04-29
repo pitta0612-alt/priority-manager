@@ -5,7 +5,7 @@ import plotly.express as px
 from datetime import datetime
 
 # 페이지 기본 설정
-st.set_page_config(page_title="우선순위 관리기 v52", layout="wide")
+st.set_page_config(page_title="우선순위 관리기 v53", layout="wide")
 
 # [보안] Secrets 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -44,13 +44,16 @@ with st.sidebar:
         t_name = st.text_input("명칭 (신규)")
         last_row = None
     else:
-        active_tasks = sorted(df[df["상태"] == "진행"]["작업명"].unique())
+        # [V53 수정] 각 항목의 가장 최신 상태를 확인하여 '진행' 중인 것만 필터링
+        latest_status = df.sort_values("저장시간").groupby("작업명").tail(1)
+        active_tasks = sorted(latest_status[latest_status["상태"] == "진행"]["작업명"].unique())
+        
         if active_tasks:
             t_name = st.selectbox("업데이트할 항목 선택", active_tasks)
             last_row = df[df["작업명"] == t_name].iloc[-1]
         else:
             t_name = ""
-            st.info("진행 중인 항목이 없습니다.")
+            st.info("현재 진행 중인 항목이 없습니다.")
             last_row = None
 
     p = st.slider("진행률 (%)", 0, 100, int(last_row["진행률"]) if last_row is not None else 0, step=5)
@@ -94,10 +97,8 @@ with col_chart:
                          hover_data=active_df.columns, text="작업명", range_x=[-5, 105], range_y=[0, 120])
         fig.update_traces(textposition='top center', textfont_size=active_df['font_size'])
         
-        # 그래프에서 클릭된 데이터 확인
         selected_points = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
         
-        # 선택된 데이터가 있는지 확인 (선택된 작업명 추출)
         selected_task_from_chart = None
         if selected_points and "selection" in selected_points and selected_points["selection"]["points"]:
             selected_task_from_chart = selected_points["selection"]["points"][0]["customdata"][0]
@@ -108,7 +109,6 @@ with col_chart:
 with col_focus:
     st.subheader("🎯 집중 타겟 및 완료")
     
-    # 1순위: 그래프에서 선택한 항목 / 2순위: 시스템 추천 항목
     if selected_task_from_chart:
         target_row = active_df[active_df["작업명"] == selected_task_from_chart].iloc[0]
         st.info(f"📍 선택됨: **{selected_task_from_chart}**")
