@@ -12,18 +12,16 @@ st.set_page_config(page_title="우선순위 관리기 v34", layout="wide")
 # 연결 초기화
 conn = st.connection("gsheets", type=GSheetsConnection)
 
+# 기존의 SHEET_URL 정의 부분을 지우거나 주석 처리하고 아래만 남기세요.
+conn = st.connection("gsheets", type=GSheetsConnection)
+
 def load_data(worksheet_name):
     try:
-        # 데이터 읽기 시도 (ttl=0으로 실시간성 확보)
-        df = conn.read(spreadsheet=SHEET_URL, worksheet=worksheet_name, ttl=0)
-        # 빈 데이터나 헤더만 있는 경우 처리
-        if df is None or df.empty:
-            raise ValueError
-        # '작업명'이 비어있는 행(공백 행) 제거
-        df = df.dropna(subset=["작업명"])
-        return df
-    except:
-        # 오류 발생 시 섹션별 기본 틀 반환
+        # Secrets에 적힌 정보를 바탕으로 자동으로 시트와 연결합니다.
+        return conn.read(worksheet=worksheet_name, ttl=0)
+    except Exception as e:
+        # 에러 발생 시 화면에 출력 (디버깅용)
+        st.error(f"데이터 로드 실패: {e}")
         if worksheet_name == "work":
             return pd.DataFrame(columns=["작업명", "우선순위", "진행률", "긴급도", "중요도", "의존성", "효율성"])
         else:
