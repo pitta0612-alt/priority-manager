@@ -5,7 +5,7 @@ import plotly.express as px
 from datetime import datetime
 
 # 페이지 기본 설정
-st.set_page_config(page_title="우선순위 관리기 v51", layout="wide")
+st.set_page_config(page_title="우선순위 관리기 v52", layout="wide")
 
 # [보안] Secrets 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
@@ -93,19 +93,38 @@ with col_chart:
         fig = px.scatter(active_df, x="진행률", y="우선순위", size="우선순위", color="작업명", 
                          hover_data=active_df.columns, text="작업명", range_x=[-5, 105], range_y=[0, 120])
         fig.update_traces(textposition='top center', textfont_size=active_df['font_size'])
-        st.plotly_chart(fig, use_container_width=True)
+        
+        # 그래프에서 클릭된 데이터 확인
+        selected_points = st.plotly_chart(fig, use_container_width=True, on_select="rerun")
+        
+        # 선택된 데이터가 있는지 확인 (선택된 작업명 추출)
+        selected_task_from_chart = None
+        if selected_points and "selection" in selected_points and selected_points["selection"]["points"]:
+            selected_task_from_chart = selected_points["selection"]["points"][0]["customdata"][0]
     else:
         st.info("현재 진행 중인 작업이 없습니다.")
+        selected_task_from_chart = None
 
 with col_focus:
-    st.subheader("🎯 집중 타겟")
-    pending = active_df.sort_values(by="우선순위", ascending=False)
-    if not pending.empty:
-        top = pending.iloc[0]
-        st.warning(f"**집중: {top['작업명']}**")
-        st.progress(int(top['진행률']))
+    st.subheader("🎯 집중 타겟 및 완료")
+    
+    # 1순위: 그래프에서 선택한 항목 / 2순위: 시스템 추천 항목
+    if selected_task_from_chart:
+        target_row = active_df[active_df["작업명"] == selected_task_from_chart].iloc[0]
+        st.info(f"📍 선택됨: **{selected_task_from_chart}**")
+    else:
+        pending = active_df.sort_values(by="우선순위", ascending=False)
+        if not pending.empty:
+            target_row = pending.iloc[0]
+            st.write(f"💡 추천 타겟: **{target_row['작업명']}**")
+        else:
+            target_row = None
+
+    if target_row is not None:
+        st.warning(f"**대상: {target_row['작업명']}**")
+        st.progress(int(target_row['진행률']))
         if st.button("✅ 완료 처리 (이력 보존)"):
-            complete_row = top.copy()
+            complete_row = target_row.copy()
             complete_row["상태"] = "완료"
             complete_row["진행률"] = 100
             complete_row["저장시간"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -114,7 +133,7 @@ with col_focus:
             st.balloons()
             st.rerun()
 
-# --- 하단 이력 관리 (수정된 부분) ---
+# --- 하단 이력 관리 ---
 st.divider()
 show_task_history = st.checkbox("🔍 항목별 변화 이력 보기")
 
