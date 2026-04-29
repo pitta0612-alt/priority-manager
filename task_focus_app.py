@@ -3,38 +3,37 @@ from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 import plotly.express as px
 
-# [설정] 구글 스프레드시트 고유 ID (사용자님 시트 주소에서 추출)
-SPREADSHEET_ID = "1v4cSD3FMYfIWxMdkK9t6wD3MNcAt_h-knP4GH6EsgJ0"
-SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SPREADSHEET_ID}/edit#gid=0"
+# 페이지 기본 설정
+st.set_page_config(page_title="우선순위 관리기 v45", layout="wide")
 
-st.set_page_config(page_title="우선순위 관리기 v34", layout="wide")
-
-# 연결 초기화
-conn = st.connection("gsheets", type=GSheetsConnection)
-
-# 기존의 SHEET_URL 정의 부분을 지우거나 주석 처리하고 아래만 남기세요.
+# [보안] Secrets에 설정된 정보를 사용하여 자동으로 연결
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data(worksheet_name):
+    """구글 시트에서 데이터를 실시간으로 로드"""
     try:
-        # Secrets에 적힌 정보를 바탕으로 자동으로 시트와 연결합니다.
-        return conn.read(worksheet=worksheet_name, ttl=0)
-    except Exception as e:
-        # 에러 발생 시 화면에 출력 (디버깅용)
-        st.error(f"데이터 로드 실패: {e}")
+        # Secrets에 설정된 정보를 바탕으로 데이터 로드
+        df = conn.read(worksheet=worksheet_name, ttl=0)
+        if df is None or df.empty:
+            raise ValueError
+        # 작업명이 있는 유효한 행만 필터링
+        return df.dropna(subset=["작업명"])
+    except:
+        # 데이터가 없을 경우 기본 컬럼 구조 생성
         if worksheet_name == "work":
             return pd.DataFrame(columns=["작업명", "우선순위", "진행률", "긴급도", "중요도", "의존성", "효율성"])
         else:
             return pd.DataFrame(columns=["작업명", "우선순위", "진행률", "중요도", "효율성", "난이도"])
 
-# --- 섹션 및 데이터 로드 ---
+# --- 메인 로직 시작 ---
 section = st.sidebar.selectbox("📂 섹션 선택", ["업무(Work)", "공부(Study)"])
 ws_name = "work" if "업무" in section else "study"
-st.title(f"🛡️ {section} 시스템 (Cloud Sync)")
+st.title(f"🛡️ {section} 우선순위 시스템")
 
+# 데이터 불러오기
 df = load_data(ws_name)
 
-# --- 사이드바 제어 ---
+# --- 사이드바: 추가 및 수정 ---
 with st.sidebar:
     st.divider()
     mode = st.radio("모드 설정", ["새 항목 추가", "기존 항목 수정"])
@@ -61,7 +60,7 @@ with st.sidebar:
                 try:
                     new_row = pd.DataFrame([new_data])
                     updated_df = pd.concat([df, new_row], ignore_index=True)
-                    conn.update(spreadsheet=SHEET_URL, worksheet=ws_name, data=updated_df)
+                    conn.update(worksheet=ws_name, data=updated_df)
                     st.success("✅ 저장 성공!")
                     st.rerun()
                 except Exception as err:
@@ -92,40 +91,45 @@ with st.sidebar:
             if st.button("💾 변경사항 반영"):
                 try:
                     df.loc[df["작업명"] == target, up_cols] = up_vals
-                    conn.update(spreadsheet=SHEET_URL, worksheet=ws_name, data=df)
+                    conn.update(worksheet=ws_name, data=df)
                     st.success("✅ 동기화 완료!")
                     st.rerun()
                 except Exception as err:
                     st.error(f"수정 실패: {err}")
-        else:
-            st.warning("수정할 데이터가 없습니다.")
 
-# --- 메인 화면 레이아웃 ---
+# --- 상단 영역: 차트 및 최우선 타겟 ---
 col_chart, col_focus = st.columns([2, 1])
 
 with col_chart:
-    st.subheader("📊 우선순위 맵")
+    st.subheader("📊 우선순위 맵 (Scatter Plot)")
     if not df.empty:
         fig = px.scatter(df, x="진행률", y="우선순위", size="우선순위", color="작업명", 
                          hover_data=df.columns, text="작업명", range_x=[-5, 105], range_y=[0, 120])
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("시트에 데이터가 없습니다. 사이드바에서 추가해 주세요.")
+        st.info("표시할 데이터가 없습니다.")
 
 with col_focus:
-    st.subheader("🎯 최우선 타겟")
+    st.subheader("🎯 최우선 집중 타겟")
     pending = df[df["진행률"] < 100].sort_values(by="우선순위", ascending=False)
     if not pending.empty:
         top = pending.iloc[0]
         st.warning(f"**현재 집중: {top['작업명']}**")
         st.progress(int(top['진행률']))
         if st.button("✅ 완료 (시트에서 삭제)"):
-            try:
-                new_df = df[df["작업명"] != top["작업명"]]
-                conn.update(spreadsheet=SHEET_URL, worksheet=ws_name, data=new_df)
-                st.balloons()
-                st.rerun()
-            except Exception as err:
-                st.error(f"삭제 실패: {err}")
+            new_df = df[df["작업명"] != top["작업명"]]
+            conn.update(worksheet=ws_name, data=new_df)
+            st.balloons()
+            st.rerun()
     else:
-        st.success("모든 업무가 완료되었습니다!")
+        st.success("모든 목표를 달성했습니다!")
+
+# --- 하단 영역: 지난 이력 (데이터 리스트) ---
+st.divider()
+st.subheader("📋 지난 이력 (전체 데이터 리스트)")
+if not df.empty:
+    # 점수가 높은 순(우선순위 순)으로 정렬하여 표로 표시
+    history_df = df.sort_values(by="우선순위", ascending=False)
+    st.dataframe(history_df, use_container_width=True)
+else:
+    st.info("데이터 리스트가 비어 있습니다.")
